@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/custom/Header';
 import { Footer } from '@/components/custom/Footer';
 import { PropertyCard } from '@/components/custom/PropertyCard';
 import { PropertyGridSkeleton } from '@/components/custom/PropertyCardSkeleton';
-import { MOCK_PROPERTIES, CITIES, LOCALITIES } from '@/services/mockData';
+import { CITIES, LOCALITIES } from '@/services/mockData';
 import { PROPERTY_CONFIG } from '@/constants/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,12 @@ import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Spinner } from '@/components/ui/spinner';
 import { Filter, X } from 'lucide-react';
+import axios from 'axios';
+import { Property } from '@/types';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 function PropertiesContent() {
   const searchParams = useSearchParams();
@@ -34,63 +39,108 @@ function PropertiesContent() {
     new Set()
   );
   const [showFilters, setShowFilters] = useState(false);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredProperties = useMemo(() => {
-    return MOCK_PROPERTIES.filter((property) => {
-      const matchSearch =
-        searchQuery === '' ||
-        property.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        property.description
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase());
+  // Load bookmarks from localStorage on mount
+  useEffect(() => {
+    const savedBookmarks = localStorage.getItem('bookmarked_properties');
+    if (savedBookmarks) {
+      try {
+        const bookmarkIds = JSON.parse(savedBookmarks);
+        setBookmarkedProperties(new Set(bookmarkIds));
+      } catch (e) {
+        console.error('Failed to parse bookmarks:', e);
+      }
+    }
+  }, []);
 
-      const matchCity = selectedCity === '' || property.city === selectedCity;
-      const matchLocality =
-        selectedLocality === '' || property.locality === selectedLocality;
-      const matchPrice =
-        property.price >= priceRange[0] && property.price <= priceRange[1];
-      const matchArea =
-        property.area >= areaRange[0] && property.area <= areaRange[1];
-      const matchType =
-        selectedTypes.length === 0 || selectedTypes.includes(property.type);
-      const matchAmenities =
-        selectedAmenities.length === 0 ||
-        selectedAmenities.every((amenity) =>
-          property.amenities.includes(amenity)
+  // Fetch properties from backend with filters
+  useEffect(() => {
+    const fetchProperties = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams();
+        
+        if (selectedCity) params.append('city', selectedCity);
+        if (selectedTypes.length > 0) {
+          selectedTypes.forEach(type => params.append('type', type));
+        }
+        if (priceRange[0] > 0) params.append('minPrice', priceRange[0].toString());
+        if (priceRange[1] < 100000000) params.append('maxPrice', priceRange[1].toString());
+        if (areaRange[0] > 0) params.append('minArea', areaRange[0].toString());
+        if (areaRange[1] < 1000000) params.append('maxArea', areaRange[1].toString());
+        if (searchQuery) params.append('search', searchQuery);
+        
+        params.append('limit', '100');
+
+        const response = await axios.get(`${API_BASE_URL}/properties?${params.toString()}`, {
+          withCredentials: true,
+        });
+
+        // Transform backend response to frontend Property type
+        const transformedProperties: Property[] = (response.data.properties || []).map(
+          (prop: any, idx: number) => ({
+            id: prop.id,
+            title: prop.title || prop.name,
+            description: prop.description || '',
+            type: prop.type,
+            status: prop.status || 'available',
+            ownerId: prop.ownerId,
+            ownerName: prop.ownerName || 'Property Owner',
+            price: prop.price,
+            area: prop.area || 0,
+            address: prop.address || '',
+            city: prop.city || prop.location || '',
+            locality: prop.locality || '',
+            state: prop.state || '',
+            zipCode: prop.zipCode || prop.pincode || '',
+            bedrooms: prop.bedrooms,
+            bathrooms: prop.bathrooms,
+            amenities: prop.amenities || [],
+            images: (prop.images || []).map((url: string, imgIdx: number) => ({
+              id: `${prop.id}-${imgIdx}`,
+              url,
+              alt: `${prop.title} - Image ${imgIdx + 1}`,
+              isPrimary: imgIdx === 0,
+            })),
+            isFeatured: prop.isFeatured || false,
+            createdAt: prop.createdAt,
+            updatedAt: prop.updatedAt,
+          })
         );
 
-      return (
-        matchSearch &&
-        matchCity &&
-        matchLocality &&
-        matchPrice &&
-        matchArea &&
-        matchType &&
-        matchAmenities
-      );
-    });
-  }, [
-    searchQuery,
-    selectedCity,
-    selectedLocality,
-    priceRange,
-    areaRange,
-    selectedTypes,
-    selectedAmenities,
-  ]);
-
-  const handleBookmark = (propertyId: string) => {
-    setBookmarkedProperties((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(propertyId)) {
-        newSet.delete(propertyId);
-      } else {
-        newSet.add(propertyId);
+        setProperties(transformedProperties);
+      } catch (err: any) {
+        const errorMessage = err.response?.data?.error || 'Failed to load properties';
+        setError(errorMessage);
+        console.error('Properties fetch error:', err);
+        setProperties([]);
+      } finally {
+        setIsLoading(false);
       }
-      return newSet;
-    });
-  };
+    };
 
+    fetchProperties();
+  }, [selectedCity, selectedTypes, priceRange, areaRange, searchQuery]);
+
+  // Client-side filtering for amenities (can be optimized with backend support)
+  const filteredProperties = properties.filter((property) => {
+    if (selectedLocality && property.locality !== selectedLocality) {
+      return false;
+    }
+    if (
+      selectedAmenities.length > 0 &&
+      !selectedAmenities.every((amenity) => property.amenities.includes(amenity))
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  // Handler functions
   const handleTypeToggle = (type: string) => {
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
@@ -105,6 +155,23 @@ function PropertiesContent() {
     );
   };
 
+  const handleBookmark = (propertyId: string) => {
+    setBookmarkedProperties((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(propertyId)) {
+        newSet.delete(propertyId);
+      } else {
+        newSet.add(propertyId);
+      }
+      // Save to localStorage
+      localStorage.setItem(
+        'bookmarked_properties',
+        JSON.stringify(Array.from(newSet))
+      );
+      return newSet;
+    });
+  };
+
   const clearFilters = () => {
     setSelectedCity('');
     setSelectedLocality('');
@@ -115,35 +182,24 @@ function PropertiesContent() {
     setSelectedAmenities([]);
   };
 
-  const activeFiltersCount =
-    (selectedCity ? 1 : 0) +
-    (selectedLocality ? 1 : 0) +
-    (searchQuery ? 1 : 0) +
-    selectedTypes.length +
-    selectedAmenities.length;
+  const activeFiltersCount = [
+    selectedCity,
+    selectedLocality,
+    searchQuery,
+    selectedTypes.length > 0,
+    selectedAmenities.length > 0,
+    priceRange[0] > 0 || priceRange[1] < 100000000,
+    areaRange[0] > 0 || areaRange[1] < 1000000,
+  ].filter(Boolean).length;
 
   const FilterPanel = () => (
     <div className="space-y-6">
-      {/* Search */}
-      <div>
-        <Label className="text-base font-semibold mb-2 block">Search</Label>
-        <Input
-          placeholder="Search properties..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-10"
-        />
-      </div>
-
       {/* City */}
       <div>
         <Label className="text-base font-semibold mb-3 block">City</Label>
         <select
           value={selectedCity}
-          onChange={(e) => {
-            setSelectedCity(e.target.value);
-            setSelectedLocality('');
-          }}
+          onChange={(e) => setSelectedCity(e.target.value)}
           className="w-full h-10 px-3 rounded-md border border-input bg-background"
         >
           <option value="">All Cities</option>
@@ -282,8 +338,16 @@ function PropertiesContent() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Search Properties</h1>
             <p className="text-muted-foreground">
-              Found {filteredProperties.length} properties
-              {activeFiltersCount > 0 && ` with ${activeFiltersCount} active filter${activeFiltersCount > 1 ? 's' : ''}`}
+              {isLoading ? (
+                'Loading properties...'
+              ) : error ? (
+                `Error: ${error}`
+              ) : (
+                <>
+                  Found {filteredProperties.length} properties
+                  {activeFiltersCount > 0 && ` with ${activeFiltersCount} active filter${activeFiltersCount > 1 ? 's' : ''}`}
+                </>
+              )}
             </p>
           </div>
 
@@ -326,7 +390,20 @@ function PropertiesContent() {
 
           {/* Properties Grid */}
           <div className="md:col-span-3">
-            {filteredProperties.length === 0 ? (
+            {isLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {[...Array(6)].map((_, i) => (
+                  <PropertyGridSkeleton key={i} count={1} />
+                ))}
+              </div>
+            ) : error ? (
+              <Card className="col-span-full">
+                <CardContent className="text-center py-12">
+                  <p className="text-lg text-red-600 mb-2">Error loading properties</p>
+                  <p className="text-sm text-muted-foreground">{error}</p>
+                </CardContent>
+              </Card>
+            ) : filteredProperties.length === 0 ? (
               <Card className="col-span-full">
                 <CardContent className="text-center py-12">
                   <p className="text-lg text-muted-foreground mb-2">

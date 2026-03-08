@@ -15,6 +15,7 @@ const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL: API_CONFIG.BASE_URL,
     timeout: API_CONFIG.TIMEOUT,
+    withCredentials: true, // Enable sending cookies with requests
     headers: {
       'Content-Type': 'application/json',
     },

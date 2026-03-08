@@ -142,17 +142,27 @@ export interface ApiError {
   code?: string;
 }
 
+// OTP Session Type
+export interface OTPAuthSession {
+  email: string;
+  session: string;
+  expiresAt: number;
+}
+
 // Authentication Context Types
 export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   token: string | null;
+  otpSession?: OTPAuthSession | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: SignupRequest) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   refreshToken: () => Promise<void>;
+  startOTPFlow?: (email: string) => Promise<OTPAuthSession>;
+  verifyOTP?: (otp: string) => Promise<User>;
 }
 
 // Bookmark Types

@@ -14,6 +14,22 @@ export const LoginSchema = z.object({
       FORM_MESSAGES.PASSWORD_TOO_SHORT),
 });
 
+// OTP Auth Schemas
+export const OTPStartSchema = z.object({
+  email: z
+    .string()
+    .min(1, FORM_MESSAGES.REQUIRED_FIELD)
+    .email(FORM_MESSAGES.INVALID_EMAIL),
+});
+
+export const OTPVerifySchema = z.object({
+  otp: z
+    .string()
+    .min(6, 'OTP must be 6 digits')
+    .max(6, 'OTP must be 6 digits')
+    .regex(/^\d+$/, 'OTP must contain only numbers'),
+});
+
 export const SignupSchema = z
   .object({
     email: z
@@ -146,6 +162,8 @@ export const FeaturedPropertySchema = z.object({
 });
 
 export type LoginFormData = z.infer<typeof LoginSchema>;
+export type OTPStartFormData = z.infer<typeof OTPStartSchema>;
+export type OTPVerifyFormData = z.infer<typeof OTPVerifySchema>;
 export type SignupFormData = z.infer<typeof SignupSchema>;
 export type PropertyFormData = z.infer<typeof PropertyFormSchema>;
 export type UpdateProfileData = z.infer<typeof UpdateProfileSchema>;

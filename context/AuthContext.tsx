@@ -12,49 +12,15 @@ import {
 } from '@/services/axiosConfig';
 import { AUTH_MESSAGES } from '@/constants/messages';
 import { toast } from 'sonner';
+import axios from 'axios';
 
-// Mock user data for development
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-  'owner@example.com': {
-    password: 'password123',
-    user: {
-      id: '1',
-      email: 'owner@example.com',
-      fullName: 'John Doe',
-      phoneNumber: '9876543210',
-      role: 'owner',
-      verified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-  'tenant@example.com': {
-    password: 'password123',
-    user: {
-      id: '2',
-      email: 'tenant@example.com',
-      fullName: 'Jane Smith',
-      phoneNumber: '9876543211',
-      role: 'tenant',
-      verified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-  'admin@example.com': {
-    password: 'password123',
-    user: {
-      id: '3',
-      email: 'admin@example.com',
-      fullName: 'Admin User',
-      phoneNumber: '9876543212',
-      role: 'admin',
-      verified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  },
-};
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+export interface OTPAuthSession {
+  email: string;
+  session: string;
+  expiresAt: number;
+}
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -64,6 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUserState] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setTokenState] = useState<string | null>(null);
+  const [otpSession, setOtpSession] = useState<OTPAuthSession | null>(null);
 
   // Initialize auth state from localStorage
   useEffect(() => {
@@ -76,65 +43,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(false);
   }, []);
 
+  const startOTPFlow = useCallback(async (email: string) => {
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/start`, { email });
+      
+      if (!response.data.Session) {
+        throw new Error('Failed to initiate OTP flow');
+      }
+
+      const session: OTPAuthSession = {
+        email,
+        session: response.data.Session,
+        expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      };
+
+      setOtpSession(session);
+      toast.success(`OTP sent to ${email}`);
+      return session;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Failed to send OTP';
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const verifyOTP = useCallback(async (otp: string) => {
+    if (!otpSession) {
+      throw new Error('No OTP session found');
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/verify`, {
+        email: otpSession.email,
+        otp,
+        session: otpSession.session,
+      });
+
+      const { accessToken, idToken } = response.data;
+
+      if (!accessToken) {
+        throw new Error('No access token received');
+      }
+
+      // Store tokens - accessToken in localStorage, refreshToken handled by axios
+      setAuthToken(accessToken);
+      setTokenState(accessToken);
+
+      // Clean up OTP session
+      setOtpSession(null);
+
+      // For now, create a basic user object from email
+      // In production, you might fetch user profile from an endpoint
+      const userData: User = {
+        id: otpSession.email, // Use email as ID
+        email: otpSession.email,
+        fullName: otpSession.email.split('@')[0],
+        phoneNumber: '',
+        role: 'owner', // Default role - could be enhanced with backend
+        verified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setUser(userData);
+      setUserState(userData);
+
+      toast.success(AUTH_MESSAGES.LOGIN_SUCCESS);
+      return userData;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'OTP verification failed';
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [otpSession]);
+
   const login = useCallback(
     async (email: string, password: string) => {
-      setIsLoading(true);
-      try {
-        // Mock authentication
-        const mockUserData = MOCK_USERS[email];
-        if (!mockUserData || mockUserData.password !== password) {
-          throw new Error(AUTH_MESSAGES.INVALID_CREDENTIALS);
-        }
-
-        const mockToken = `mock_token_${Date.now()}_${Math.random()}`;
-        const userData = mockUserData.user;
-
-        setAuthToken(mockToken);
-        setUser(userData);
-        setTokenState(mockToken);
-        setUserState(userData);
-
-        toast.success(AUTH_MESSAGES.LOGIN_SUCCESS);
-      } catch (error: any) {
-        const errorMessage =
-          error.message || AUTH_MESSAGES.LOGIN_ERROR;
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
-      } finally {
-        setIsLoading(false);
-      }
+      // For OTP flow, we start the OTP and let the component handle OTP input
+      // This login method is kept for compatibility but uses OTP start
+      return startOTPFlow(email);
     },
-    []
+    [startOTPFlow]
   );
 
   const signup = useCallback(
     async (data: SignupRequest) => {
       setIsLoading(true);
       try {
-        // Check if email already exists
-        if (MOCK_USERS[data.email]) {
-          throw new Error(AUTH_MESSAGES.EMAIL_ALREADY_EXISTS);
-        }
+        // Start OTP flow for signup
+        // Note: Role information can be configured after verification
+        await startOTPFlow(data.email);
 
-        // Mock signup
-        const newUser: User = {
-          id: `user_${Date.now()}`,
-          email: data.email,
-          fullName: data.fullName,
-          phoneNumber: data.phoneNumber,
-          role: data.role,
-          verified: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        // Store new user in mock data
-        MOCK_USERS[data.email] = {
-          password: data.password,
-          user: newUser,
-        };
-
-        toast.success(AUTH_MESSAGES.SIGNUP_SUCCESS);
+        // The verification happens in a separate step
+        toast.success('OTP sent to your email. Please verify to complete signup.');
       } catch (error: any) {
         const errorMessage =
           error.message || AUTH_MESSAGES.SIGNUP_ERROR;
@@ -144,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setIsLoading(false);
       }
     },
-    []
+    [startOTPFlow]
   );
 
   const logout = useCallback(async () => {
@@ -154,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       clearUser();
       setUserState(null);
       setTokenState(null);
+      setOtpSession(null);
       toast.success(AUTH_MESSAGES.LOGOUT_SUCCESS);
     } catch (error: any) {
       toast.error(AUTH_MESSAGES.LOGOUT_ERROR);
@@ -185,10 +193,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const refreshToken = useCallback(async () => {
     try {
-      // Mock token refresh
-      const newToken = `mock_token_${Date.now()}_${Math.random()}`;
-      setAuthToken(newToken);
-      setTokenState(newToken);
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`);
+      
+      if (!response.data.accessToken) {
+        throw new Error('Failed to refresh token');
+      }
+
+      setAuthToken(response.data.accessToken);
+      setTokenState(response.data.accessToken);
     } catch (error) {
       logout();
       throw error;
@@ -205,6 +217,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     logout,
     updateProfile,
     refreshToken,
+    otpSession,
+    startOTPFlow,
+    verifyOTP,
   };
 
   return (

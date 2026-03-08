@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { PropertyFormSchema, PropertyFormData } from '@/schemas';
@@ -37,9 +37,13 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-export default function CreatePropertyPage() {
+export default function EditPropertyPage() {
   const router = useRouter();
+  const params = useParams();
+  const propertyId = params?.id as string;
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedCity, setSelectedCity] = useState('');
 
   const form = useForm<PropertyFormData>({
@@ -63,6 +67,67 @@ export default function CreatePropertyPage() {
     },
   });
 
+  // Fetch property data
+  useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        const token = localStorage.getItem('doorkey_auth_token');
+        if (!token) {
+          throw new Error('Authentication required. Please log in.');
+        }
+
+        const response = await axios.get(`${API_BASE_URL}/properties/${propertyId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          withCredentials: true,
+        });
+
+        const property = response.data.data || response.data;
+        
+        // Set the selected city for locality dropdown
+        if (property.city) {
+          setSelectedCity(property.city);
+        }
+
+        // Populate form with fetched data
+        form.reset({
+          title: property.title || '',
+          description: property.description || '',
+          type: property.type || 'residential',
+          status: property.status || 'available',
+          price: property.price || 0,
+          area: property.area || 0,
+          address: property.address || '',
+          city: property.city || '',
+          locality: property.locality || '',
+          state: property.state || '',
+          zipCode: property.zipCode || '',
+          bedrooms: property.bedrooms,
+          bathrooms: property.bathrooms,
+          amenities: property.amenities || [],
+          images: property.images || [],
+        });
+      } catch (error: any) {
+        const errorMessage = 
+          error.response?.data?.error || 
+          error.message || 
+          'Failed to load property details';
+        toast.error(errorMessage);
+        console.error('Property fetch error:', error);
+        // Redirect back if property not found
+        router.push('/owner-dashboard');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (propertyId) {
+      fetchProperty();
+    }
+  }, [propertyId, form, router]);
+
   const onSubmit = async (data: PropertyFormData) => {
     setIsSubmitting(true);
     try {
@@ -72,7 +137,7 @@ export default function CreatePropertyPage() {
         throw new Error('Authentication required. Please log in.');
       }
 
-      const response = await axios.post(`${API_BASE_URL}/properties/create`, data, {
+      const response = await axios.put(`${API_BASE_URL}/properties/${propertyId}`, data, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -80,7 +145,7 @@ export default function CreatePropertyPage() {
         withCredentials: true,
       });
 
-      toast.success(PROPERTY_MESSAGES.PROPERTY_CREATED);
+      toast.success(PROPERTY_MESSAGES.PROPERTY_UPDATED || 'Property updated successfully');
       router.push('/owner-dashboard');
     } catch (error: any) {
       const errorMessage = 
@@ -88,7 +153,7 @@ export default function CreatePropertyPage() {
         error.message || 
         PROPERTY_MESSAGES.PROPERTY_CREATED_ERROR;
       toast.error(errorMessage);
-      console.error('Property creation error:', error);
+      console.error('Property update error:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -102,6 +167,19 @@ export default function CreatePropertyPage() {
     form.setValue('amenities', updated);
   };
 
+  if (isLoading) {
+    return (
+      <ProtectedRoute requiredRole="owner">
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Spinner size={32} />
+            <p className="text-muted-foreground">Loading property details...</p>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
   return (
     <ProtectedRoute requiredRole="owner">
       <div className="min-h-screen bg-background">
@@ -110,9 +188,9 @@ export default function CreatePropertyPage() {
         <div className="container mx-auto px-4 max-w-4xl py-8">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">List a New Property</h1>
+            <h1 className="text-3xl font-bold mb-2">Edit Property</h1>
             <p className="text-muted-foreground">
-              Fill in the details below to list your property on DoorKey
+              Update your property details on DoorKey
             </p>
           </div>
 
@@ -177,7 +255,7 @@ export default function CreatePropertyPage() {
                           <FormLabel>Property Type</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                             disabled={isSubmitting}
                           >
                             <FormControl>
@@ -207,7 +285,7 @@ export default function CreatePropertyPage() {
                           <FormLabel>Status</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                             disabled={isSubmitting}
                           >
                             <FormControl>
@@ -557,10 +635,10 @@ export default function CreatePropertyPage() {
                   {isSubmitting ? (
                     <>
                       <Spinner className="mr-2" size={16} />
-                      Publishing...
+                      Saving...
                     </>
                   ) : (
-                    'Publish Property'
+                    'Save Changes'
                   )}
                 </Button>
                 <Button

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LoginSchema, LoginFormData } from '@/schemas';
+import { OTPStartSchema, OTPVerifySchema, OTPStartFormData, OTPVerifyFormData } from '@/schemas';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,28 +19,95 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { KEY_ICON } from './icons';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { startOTPFlow, verifyOTP } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [showOTPDialog, setShowOTPDialog] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [otpTimeLeft, setOtpTimeLeft] = useState(0);
 
-  const form = useForm<LoginFormData>({
-    resolver: zodResolver(LoginSchema),
+  const emailForm = useForm<OTPStartFormData>({
+    resolver: zodResolver(OTPStartSchema),
     defaultValues: {
       email: '',
-      password: '',
     },
   });
 
-  const onSubmit = async (data: LoginFormData) => {
+  const otpForm = useForm<OTPVerifyFormData>({
+    resolver: zodResolver(OTPVerifySchema),
+    defaultValues: {
+      otp: '',
+    },
+  });
+
+  // Timer for resend OTP
+  React.useEffect(() => {
+    if (otpTimeLeft > 0) {
+      const timer = setTimeout(() => setOtpTimeLeft(otpTimeLeft - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [otpTimeLeft]);
+
+  const handleEmailSubmit = async (data: OTPStartFormData) => {
     setIsLoading(true);
     try {
-      await login(data.email, data.password);
+      if (!startOTPFlow) {
+        throw new Error('OTP flow not available');
+      }
+
+      await startOTPFlow(data.email);
+      setUserEmail(data.email);
+      setShowOTPDialog(true);
+      setOtpTimeLeft(60); // 60 seconds timer
+      otpForm.reset();
+    } catch (error) {
+      console.error('OTP start error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOTPSubmit = async (data: OTPVerifyFormData) => {
+    setIsLoading(true);
+    try {
+      if (!verifyOTP) {
+        throw new Error('OTP verification not available');
+      }
+
+      await verifyOTP(data.otp);
+      setShowOTPDialog(false);
       router.push('/');
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('OTP verification error:', error);
+      otpForm.setError('otp', {
+        type: 'manual',
+        message: 'Invalid OTP. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (!startOTPFlow) return;
+    
+    setIsLoading(true);
+    try {
+      await startOTPFlow(userEmail);
+      setOtpTimeLeft(60);
+      otpForm.reset();
+    } catch (error) {
+      console.error('Resend OTP error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -65,18 +132,18 @@ export default function LoginPage() {
           <CardHeader className="space-y-2">
             <CardTitle>Welcome Back</CardTitle>
             <CardDescription>
-              Sign in to your account to continue
+              Sign in with your email to continue
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Form {...form}>
+            <Form {...emailForm}>
               <form
-                onSubmit={form.handleSubmit(onSubmit)}
+                onSubmit={emailForm.handleSubmit(handleEmailSubmit)}
                 className="space-y-4"
               >
                 {/* Email Field */}
                 <FormField
-                  control={form.control}
+                  control={emailForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
@@ -85,34 +152,6 @@ export default function LoginPage() {
                         <Input
                           type="email"
                           placeholder="you@example.com"
-                          disabled={isLoading}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Password Field */}
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Password</FormLabel>
-                        <Link
-                          href="/forgot-password"
-                          className="text-xs text-primary hover:underline"
-                        >
-                          Forgot?
-                        </Link>
-                      </div>
-                      <FormControl>
-                        <Input
-                          type="password"
-                          placeholder="••••••••"
                           disabled={isLoading}
                           {...field}
                         />
@@ -132,19 +171,17 @@ export default function LoginPage() {
                   {isLoading ? (
                     <>
                       <Spinner className="mr-2" size={16} />
-                      Signing in...
+                      Sending OTP...
                     </>
                   ) : (
-                    'Sign In'
+                    'Continue with Email'
                   )}
                 </Button>
 
-                {/* Demo Credentials Info */}
-                <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-xs space-y-1">
-                  <p className="font-semibold text-gray-700">Demo Credentials:</p>
-                  <p className="text-gray-600">Owner: owner@example.com / password123</p>
-                  <p className="text-gray-600">Tenant: tenant@example.com / password123</p>
-                  <p className="text-gray-600">Admin: admin@example.com / password123</p>
+                {/* Info Message */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
+                  <p className="font-semibold text-gray-700">No Password Needed!</p>
+                  <p className="text-gray-600">We'll send you a one-time password (OTP) to verify your email.</p>
                 </div>
               </form>
             </Form>
@@ -159,6 +196,73 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
+
+      {/* OTP Verification Dialog */}
+      <Dialog open={showOTPDialog} onOpenChange={setShowOTPDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Verify Your Email</DialogTitle>
+            <DialogDescription>
+              Enter the OTP sent to <span className="font-semibold">{userEmail}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...otpForm}>
+            <form
+              onSubmit={otpForm.handleSubmit(handleOTPSubmit)}
+              className="space-y-4"
+            >
+              {/* OTP Field */}
+              <FormField
+                control={otpForm.control}
+                name="otp"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>One-Time Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="text"
+                        placeholder="000000"
+                        disabled={isLoading}
+                        maxLength={6}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Spinner className="mr-2" size={16} />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify OTP'
+                )}
+              </Button>
+
+              {/* Resend Button */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading || otpTimeLeft > 0}
+                onClick={handleResendOTP}
+              >
+                {otpTimeLeft > 0 ? `Resend in ${otpTimeLeft}s` : 'Resend OTP'}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

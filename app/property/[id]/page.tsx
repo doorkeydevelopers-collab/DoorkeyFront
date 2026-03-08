@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/custom/Header';
-import { MOCK_PROPERTIES } from '@/services/mockData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Spinner } from '@/components/ui/spinner';
 import {
   MapPin,
   BedDouble,
@@ -23,21 +23,109 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { Property } from '@/types';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export default function PropertyDetailPage() {
   const params = useParams();
   const router = useRouter();
   const propertyId = params.id as string;
 
-  const property = useMemo(
-    () => MOCK_PROPERTIES.find((p) => p.id === propertyId),
-    [propertyId]
-  );
-
+  const [property, setProperty] = useState<Property | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [isBookmarked, setIsBookmarked] = useState(false);
 
-  if (!property) {
+  // Load bookmarks from localStorage on mount
+  useEffect(() => {
+    const savedBookmarks = localStorage.getItem('bookmarked_properties');
+    if (savedBookmarks) {
+      try {
+        const bookmarkIds = JSON.parse(savedBookmarks);
+        setIsBookmarked(bookmarkIds.includes(propertyId));
+      } catch (e) {
+        console.error('Failed to parse bookmarks:', e);
+      }
+    }
+  }, [propertyId]);
+
+  // Fetch property from backend
+  useEffect(() => {
+    const fetchProperty = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await axios.get(`${API_BASE_URL}/properties/${propertyId}`, {
+          withCredentials: true,
+        });
+        
+        // Transform backend response to frontend Property type
+        const backendProperty = response.data;
+        
+        const transformedProperty: Property = {
+          id: backendProperty.id,
+          title: backendProperty.title || backendProperty.name,
+          description: backendProperty.description || '',
+          type: backendProperty.type,
+          status: backendProperty.status || 'available',
+          ownerId: backendProperty.ownerId,
+          ownerName: backendProperty.ownerName || 'Property Owner',
+          price: backendProperty.price,
+          area: backendProperty.area || 0,
+          address: backendProperty.address || '',
+          city: backendProperty.city || backendProperty.location || '',
+          locality: backendProperty.locality || '',
+          state: backendProperty.state || '',
+          zipCode: backendProperty.zipCode || backendProperty.pincode || '',
+          bedrooms: backendProperty.bedrooms,
+          bathrooms: backendProperty.bathrooms,
+          amenities: backendProperty.amenities || [],
+          images: (backendProperty.images || []).map((url: string, idx: number) => ({
+            id: `${propertyId}-${idx}`,
+            url,
+            alt: `${backendProperty.title} - Image ${idx + 1}`,
+            isPrimary: idx === 0,
+          })),
+          isFeatured: backendProperty.isFeatured || false,
+          createdAt: backendProperty.createdAt,
+          updatedAt: backendProperty.updatedAt,
+        };
+
+        setProperty(transformedProperty);
+      } catch (err: any) {
+        const errorMessage = err.response?.data?.error || 'Failed to load property details';
+        setError(errorMessage);
+        console.error('Property fetch error:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (propertyId) {
+      fetchProperty();
+    }
+  }, [propertyId]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 max-w-7xl py-12">
+          <Card>
+            <CardContent className="text-center py-12">
+              <Spinner className="mx-auto mb-4" />
+              <h1 className="text-xl font-semibold mb-2">Loading property details...</h1>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !property) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -47,7 +135,7 @@ export default function PropertyDetailPage() {
               <AlertCircle className="w-12 h-12 mx-auto mb-4 text-destructive" />
               <h1 className="text-2xl font-bold mb-2">Property Not Found</h1>
               <p className="text-muted-foreground mb-6">
-                The property you're looking for doesn't exist or has been removed.
+                {error || "The property you're looking for doesn't exist or has been removed."}
               </p>
               <Button onClick={() => router.push('/properties')}>
                 Back to Properties
@@ -70,9 +158,33 @@ export default function PropertyDetailPage() {
     : 0;
 
   const handleBookmark = () => {
-    setIsBookmarked(!isBookmarked);
+    const newBookmarked = !isBookmarked;
+    setIsBookmarked(newBookmarked);
+
+    // Update localStorage
+    try {
+      const savedBookmarks = localStorage.getItem('bookmarked_properties');
+      let bookmarkIds: string[] = [];
+
+      if (savedBookmarks) {
+        bookmarkIds = JSON.parse(savedBookmarks);
+      }
+
+      if (newBookmarked) {
+        if (!bookmarkIds.includes(propertyId)) {
+          bookmarkIds.push(propertyId);
+        }
+      } else {
+        bookmarkIds = bookmarkIds.filter((id) => id !== propertyId);
+      }
+
+      localStorage.setItem('bookmarked_properties', JSON.stringify(bookmarkIds));
+    } catch (e) {
+      console.error('Failed to update bookmarks:', e);
+    }
+
     toast.success(
-      isBookmarked ? 'Removed from bookmarks' : 'Added to bookmarks'
+      newBookmarked ? 'Added to bookmarks' : 'Removed from bookmarks'
     );
   };
 
@@ -162,7 +274,7 @@ export default function PropertyDetailPage() {
                       <button
                         key={image.id}
                         onClick={() => setSelectedImage(index)}
-                        className={`relative w-20 h-20 rounded-md overflow-hidden flex-shrink-0 border-2 transition-colors ${
+                        className={`relative w-20 h-20 rounded-md overflow-hidden shrink-0 border-2 transition-colors ${
                           selectedImage === index
                             ? 'border-primary'
                             : 'border-muted'
@@ -292,7 +404,7 @@ export default function PropertyDetailPage() {
                           >
                             <CheckCircle
                               size={18}
-                              className="text-primary flex-shrink-0"
+                              className="text-primary shrink-0"
                             />
                             <span className="text-sm font-medium">{amenity}</span>
                           </div>

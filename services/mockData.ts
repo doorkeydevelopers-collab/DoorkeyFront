@@ -1,4 +1,40 @@
-import { Property } from '@/types';
+import { Property, User } from '@/types';
+
+export const MOCK_USERS: (User & { password: string })[] = [
+  {
+    id: '1',
+    email: 'owner@example.com',
+    fullName: 'John Doe',
+    phoneNumber: '+91-9876543210',
+    role: 'owner',
+    verified: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: '2',
+    email: 'tenant@example.com',
+    fullName: 'Jane Smith',
+    phoneNumber: '+91-9876543211',
+    role: 'tenant',
+    verified: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    password: 'password123',
+  },
+  {
+    id: '3',
+    email: 'admin@example.com',
+    fullName: 'Admin User',
+    phoneNumber: '+91-9876543212',
+    role: 'admin',
+    verified: true,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    password: 'password123',
+  },
+];
 
 export const MOCK_PROPERTIES: Property[] = [
   {

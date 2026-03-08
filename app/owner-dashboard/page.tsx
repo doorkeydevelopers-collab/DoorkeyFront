@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import axios from 'axios';
 import { Header } from '@/components/custom/Header';
 import { ProtectedRoute } from '@/components/custom/ProtectedRoute';
 import { PropertyCard } from '@/components/custom/PropertyCard';
 import { ConfirmDialog } from '@/components/custom/ConfirmDialog';
-import { MOCK_PROPERTIES } from '@/services/mockData';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -31,68 +32,162 @@ import {
 import { toast } from 'sonner';
 import { PROPERTY_MESSAGES, CONFIRMATION_MESSAGES } from '@/constants/messages';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+interface OwnerStats {
+  totalProperties: number;
+  activeProperties: number;
+  totalViews: number;
+  totalLikes: number;
+  averagePrice: number;
+  properties: any[];
+}
+
 export default function OwnerDashboardPage() {
-  const [properties, setProperties] = useState(MOCK_PROPERTIES);
+  const [stats, setStats] = useState<OwnerStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
     propertyId?: string;
   }>({ isOpen: false });
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const ownerProperties = properties.filter((p) => p.ownerId === '1');
+  // Fetch owner stats and properties
+  useEffect(() => {
+    const fetchStats = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem('doorkey_auth_token');
+        if (!token) {
+          throw new Error('Authentication required');
+        }
+
+        const response = await axios.get(`${API_BASE_URL}/properties/dashboard/owner`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          withCredentials: true,
+        });
+
+        setStats(response.data);
+      } catch (err: any) {
+        const errorMessage = err.response?.data?.error || err.message || 'Failed to load dashboard';
+        setError(errorMessage);
+        console.error('Owner stats error:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   const handleDeleteConfirm = (propertyId: string) => {
     setDeleteConfirm({ isOpen: true, propertyId });
   };
 
   const handleDeleteProperty = async () => {
-    if (!deleteConfirm.propertyId) return;
+    if (!deleteConfirm.propertyId || !stats) return;
 
     setIsDeleting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setProperties((prev) =>
-        prev.filter((p) => p.id !== deleteConfirm.propertyId)
-      );
+      const token = localStorage.getItem('doorkey_auth_token');
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      await axios.delete(`${API_BASE_URL}/properties/${deleteConfirm.propertyId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        withCredentials: true,
+      });
+
+      // Update local state
+      setStats({
+        ...stats,
+        totalProperties: stats.totalProperties - 1,
+        activeProperties: stats.properties.find(p => p.id === deleteConfirm.propertyId)?.status === 'available' 
+          ? stats.activeProperties - 1 
+          : stats.activeProperties,
+        properties: stats.properties.filter(p => p.id !== deleteConfirm.propertyId),
+      });
+
       toast.success(PROPERTY_MESSAGES.PROPERTY_DELETED);
       setDeleteConfirm({ isOpen: false });
-    } catch (error) {
-      toast.error(PROPERTY_MESSAGES.PROPERTY_DELETED_ERROR);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to delete property';
+      toast.error(errorMessage);
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const stats = [
+  if (isLoading) {
+    return (
+      <ProtectedRoute requiredRole="owner">
+        <div className="min-h-screen bg-background">
+          <Header />
+          <div className="container mx-auto px-4 max-w-7xl py-8 flex items-center justify-center">
+            <Spinner />
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <ProtectedRoute requiredRole="owner">
+        <div className="min-h-screen bg-background">
+          <Header />
+          <div className="container mx-auto px-4 max-w-7xl py-8">
+            <Card className="border-destructive">
+              <CardContent className="pt-6 text-center">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+                <p className="text-lg font-semibold mb-2">Error Loading Dashboard</p>
+                <p className="text-muted-foreground mb-4">{error}</p>
+                <Button onClick={() => window.location.reload()}>Retry</Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  const dashboardStats = [
     {
       icon: Building2,
       label: 'Total Properties',
-      value: ownerProperties.length,
+      value: stats.totalProperties,
     },
     {
       icon: Eye,
       label: 'Total Views',
-      value: '2,450',
+      value: stats.totalViews.toLocaleString(),
     },
     {
       icon: Heart,
-      label: 'Saved by Users',
-      value: '156',
+      label: 'Total Likes',
+      value: stats.totalLikes.toLocaleString(),
     },
     {
       icon: TrendingUp,
-      label: 'Conversion Rate',
-      value: '12.5%',
+      label: 'Average Price',
+      value: `₹${(stats.averagePrice / 1000000).toFixed(2)}Cr`,
     },
   ];
 
-  const availableProperties = ownerProperties.filter(
+  const availableProperties = stats.properties.filter(
     (p) => p.status === 'available'
   );
-  const rentedProperties = ownerProperties.filter(
+  const rentedProperties = stats.properties.filter(
     (p) => p.status === 'rented'
   );
-  const pendingProperties = ownerProperties.filter(
+  const pendingProperties = stats.properties.filter(
     (p) => p.status === 'pending'
   );
 
@@ -120,7 +215,7 @@ export default function OwnerDashboardPage() {
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {stats.map((stat) => {
+            {dashboardStats.map((stat) => {
               const Icon = stat.icon;
               return (
                 <Card key={stat.label}>
@@ -151,7 +246,7 @@ export default function OwnerDashboardPage() {
               <Tabs defaultValue="all" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="all">
-                    All ({ownerProperties.length})
+                    All ({stats.properties.length})
                   </TabsTrigger>
                   <TabsTrigger value="available">
                     Available ({availableProperties.length})
@@ -166,7 +261,7 @@ export default function OwnerDashboardPage() {
 
                 {/* All Properties */}
                 <TabsContent value="all" className="space-y-6 mt-6">
-                  {ownerProperties.length === 0 ? (
+                  {stats.properties.length === 0 ? (
                     <div className="text-center py-12">
                       <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                       <p className="text-lg font-semibold mb-2">
@@ -184,7 +279,7 @@ export default function OwnerDashboardPage() {
                     </div>
                   ) : (
                     <PropertyTableView
-                      properties={ownerProperties}
+                      properties={stats.properties}
                       onDelete={handleDeleteConfirm}
                     />
                   )}
@@ -260,7 +355,7 @@ export default function OwnerDashboardPage() {
 }
 
 interface PropertyTableViewProps {
-  properties: typeof MOCK_PROPERTIES;
+  properties: any[];
   onDelete: (propertyId: string) => void;
 }
 
@@ -283,7 +378,7 @@ function PropertyTableView({
           </tr>
         </thead>
         <tbody>
-          {properties.map((property) => (
+          {properties.map((property: any) => (
             <tr key={property.id} className="border-b hover:bg-muted/50">
               <td className="py-4 px-4">
                 <div>
