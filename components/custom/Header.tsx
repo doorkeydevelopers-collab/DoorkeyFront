@@ -188,20 +188,14 @@ export function Header() {
               </>
             ) : (
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => handleNavigate('/login')}
-                  className="hidden sm:inline-flex"
-                >
-                  Sign In
-                </Button>
-                <Button
-                  onClick={() => handleNavigate('/signup')}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  Sign Up
-                </Button>
-              </div>
+              <Button
+                variant="ghost"
+                onClick={() => handleNavigate('/login')}
+                className="hidden sm:inline-flex"
+              >
+                Sign In
+              </Button>
+            </div>
             )}
           </div>
         </div>

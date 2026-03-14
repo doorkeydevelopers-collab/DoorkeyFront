@@ -52,6 +52,8 @@ export const UpdatePropertyModal: React.FC<UpdatePropertyModalProps> = ({
       toast.success('Property updated successfully');
       onOpenChange(false);
     } catch (error) {
+      console.log();
+      
       toast.error('Failed to update property');
     } finally {
       setIsLoading(false);

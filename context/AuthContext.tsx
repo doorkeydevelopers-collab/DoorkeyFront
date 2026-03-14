@@ -3,6 +3,7 @@
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { User, SignupRequest, AuthContextType } from '@/types';
 import {
+  getAxiosInstance,
   setAuthToken,
   getAuthToken,
   clearAuthToken,
@@ -93,21 +94,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setAuthToken(accessToken);
       setTokenState(accessToken);
 
+      // Fetch user profile from backend (uses interceptor to attach token)
+      const axiosInstance = getAxiosInstance();
+      const userResponse = await axiosInstance.get('/auth/profile');
+      const userData = userResponse.user;
+
       // Clean up OTP session
       setOtpSession(null);
-
-      // For now, create a basic user object from email
-      // In production, you might fetch user profile from an endpoint
-      const userData: User = {
-        id: otpSession.email, // Use email as ID
-        email: otpSession.email,
-        fullName: otpSession.email.split('@')[0],
-        phoneNumber: '',
-        role: 'owner', // Default role - could be enhanced with backend
-        verified: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
 
       setUser(userData);
       setUserState(userData);
@@ -177,6 +170,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         if (!user) throw new Error('User not found');
 
+        const axiosInstance = getAxiosInstance();
+        await axiosInstance.put('/auth/profile', data);
+
         const updatedUser = { ...user, ...data };
         setUser(updatedUser);
         setUserState(updatedUser);
@@ -191,16 +187,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [user]
   );
 
+  const submitOwnerApplication = useCallback(
+    async (applicationData: any) => {
+      setIsLoading(true);
+      try {
+        const axiosInstance = getAxiosInstance();
+        const response = await axiosInstance.post('/auth/owner-application', applicationData);
+        toast.success('Owner application submitted successfully');
+        return response;
+      } catch (error: any) {
+        const errorMessage = error.response?.data?.error || 'Failed to submit application';
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  const getOwnerApplications = useCallback(
+    async () => {
+      try {
+        const axiosInstance = getAxiosInstance();
+        const response = await axiosInstance.get('/auth/owner-applications');
+        return response.applications;
+      } catch (error: any) {
+        toast.error('Failed to fetch applications');
+        throw error;
+      }
+    },
+    []
+  );
+
+  const approveOwnerApplication = useCallback(
+    async (applicationId: string) => {
+      try {
+        const axiosInstance = getAxiosInstance();
+        const response = await axiosInstance.patch(`/auth/owner-application/${applicationId}/approve`);
+        toast.success('Application approved successfully');
+        return response;
+      } catch (error: any) {
+        toast.error('Failed to approve application');
+        throw error;
+      }
+    },
+    []
+  );
+
+  const rejectOwnerApplication = useCallback(
+    async (applicationId: string) => {
+      try {
+        const axiosInstance = getAxiosInstance();
+        const response = await axiosInstance.patch(`/auth/owner-application/${applicationId}/reject`);
+        toast.success('Application rejected');
+        return response;
+      } catch (error: any) {
+        toast.error('Failed to reject application');
+        throw error;
+      }
+    },
+    []
+  );
+
   const refreshToken = useCallback(async () => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/refresh`);
+      const axiosInstance = getAxiosInstance();
+      const response = await axiosInstance.post('/auth/refresh');
       
-      if (!response.data.accessToken) {
+      if (!response.accessToken) {
         throw new Error('Failed to refresh token');
       }
 
-      setAuthToken(response.data.accessToken);
-      setTokenState(response.data.accessToken);
+      setAuthToken(response.accessToken);
+      setTokenState(response.accessToken);
     } catch (error) {
       logout();
       throw error;
@@ -220,6 +280,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     otpSession,
     startOTPFlow,
     verifyOTP,
+    submitOwnerApplication,
+    getOwnerApplications,
+    approveOwnerApplication,
+    rejectOwnerApplication,
   };
 
   return (

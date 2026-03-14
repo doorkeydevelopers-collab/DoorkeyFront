@@ -1,0 +1,22 @@
+{
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "typescript.suggest.autoImports": false,
+  "typescript.preferences.maxTsServerMemory": 4096,
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/submodules/**": true,
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/build/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/build": true,
+    "**/dist": true
+  },
+  "editor.formatOnSave": false,
+  "editor.codeActionsOnSave": {}
+}</content>
+<parameter name="filePath">c:\Users\mahad\projects\doorkey\doorkey-app\.vscode\settings.json

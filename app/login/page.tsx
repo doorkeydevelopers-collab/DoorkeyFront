@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { KEY_ICON } from './icons';
+import { useState as useReactState } from 'react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -188,13 +189,6 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        {/* Sign Up Link */}
-        <p className="text-center text-gray-600">
-          Don't have an account?{' '}
-          <Link href="/signup" className="text-primary font-semibold hover:underline">
-            Sign up
-          </Link>
-        </p>
       </div>
 
       {/* OTP Verification Dialog */}

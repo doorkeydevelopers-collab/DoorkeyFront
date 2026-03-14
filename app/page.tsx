@@ -206,7 +206,7 @@ export default function HomePage() {
                 Join thousands of property owners who have successfully listed and rented their properties on DoorKey. Easy listing process, zero commission, maximum visibility.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/signup">
+                <Link href="/signin">
                   <Button size="lg" className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                     Start Listing Today
                   </Button>

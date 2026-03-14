@@ -19,11 +19,31 @@ import { Spinner } from '@/components/ui/spinner';
 import { Filter, X } from 'lucide-react';
 import axios from 'axios';
 import { Property } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { useDebounce } from '@/hooks/useDebounce';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 function PropertiesContent() {
   const searchParams = useSearchParams();
+  const { submitOwnerApplication } = useAuth();
   const [selectedCity, setSelectedCity] = useState(
     searchParams.get('city') || ''
   );
@@ -42,6 +62,43 @@ function PropertiesContent() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showOwnerDialog, setShowOwnerDialog] = useState(false);
+  const [isOwnerLoading, setIsOwnerLoading] = useState(false);
+
+  const ownerForm = useForm({
+    defaultValues: {
+      fullName: '',
+      phoneNumber: '',
+      experience: '',
+      propertiesCount: '',
+      reason: '',
+    },
+  });
+
+  // Debounced filter values to prevent excessive API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const debouncedPriceRange = useDebounce(priceRange, 300);
+  const debouncedAreaRange = useDebounce(areaRange, 300);
+  const debouncedSelectedTypes = useDebounce(selectedTypes, 300);
+  const debouncedSelectedCity = useDebounce(selectedCity, 300);
+  const debouncedSelectedLocality = useDebounce(selectedLocality, 300);
+  const debouncedSelectedAmenities = useDebounce(selectedAmenities, 300);
+
+  // Handler for owner application
+  const handleOwnerApplication = async (data: any) => {
+    if (!submitOwnerApplication) return;
+
+    setIsOwnerLoading(true);
+    try {
+      await submitOwnerApplication(data);
+      setShowOwnerDialog(false);
+      ownerForm.reset();
+    } catch (error) {
+      console.error('Owner application error:', error);
+    } finally {
+      setIsOwnerLoading(false);
+    }
+  };
 
   // Load bookmarks from localStorage on mount
   useEffect(() => {
@@ -64,17 +121,19 @@ function PropertiesContent() {
       try {
         const params = new URLSearchParams();
         
-        if (selectedCity) params.append('city', selectedCity);
-        if (selectedTypes.length > 0) {
-          selectedTypes.forEach(type => params.append('type', type));
+        if (debouncedSelectedCity) params.append('city', debouncedSelectedCity);
+        if (debouncedSelectedTypes.length > 0) {
+          debouncedSelectedTypes.forEach(type => params.append('type', type));
         }
-        if (priceRange[0] > 0) params.append('minPrice', priceRange[0].toString());
-        if (priceRange[1] < 100000000) params.append('maxPrice', priceRange[1].toString());
-        if (areaRange[0] > 0) params.append('minArea', areaRange[0].toString());
-        if (areaRange[1] < 1000000) params.append('maxArea', areaRange[1].toString());
-        if (searchQuery) params.append('search', searchQuery);
-        
-        params.append('limit', '100');
+        if (debouncedPriceRange[0] > 0) params.append('minPrice', debouncedPriceRange[0].toString());
+        if (debouncedPriceRange[1] < 100000000) params.append('maxPrice', debouncedPriceRange[1].toString());
+        if (debouncedAreaRange[0] > 0) params.append('minArea', debouncedAreaRange[0].toString());
+        if (debouncedAreaRange[1] < 1000000) params.append('maxArea', debouncedAreaRange[1].toString());
+        if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
+        if (debouncedSelectedLocality) params.append('locality', debouncedSelectedLocality);
+        if (debouncedSelectedAmenities.length > 0) {
+          params.append('amenities', debouncedSelectedAmenities.join(','));
+        }
 
         const response = await axios.get(`${API_BASE_URL}/properties?${params.toString()}`, {
           withCredentials: true,
@@ -83,7 +142,7 @@ function PropertiesContent() {
         // Transform backend response to frontend Property type
         const transformedProperties: Property[] = (response.data.properties || []).map(
           (prop: any, idx: number) => ({
-            id: prop.id,
+            _id: prop._id,
             title: prop.title || prop.name,
             description: prop.description || '',
             type: prop.type,
@@ -124,21 +183,10 @@ function PropertiesContent() {
     };
 
     fetchProperties();
-  }, [selectedCity, selectedTypes, priceRange, areaRange, searchQuery]);
+  }, [debouncedSelectedCity, debouncedSelectedTypes, debouncedPriceRange, debouncedAreaRange, debouncedSearchQuery, debouncedSelectedLocality, debouncedSelectedAmenities]);
 
   // Client-side filtering for amenities (can be optimized with backend support)
-  const filteredProperties = properties.filter((property) => {
-    if (selectedLocality && property.locality !== selectedLocality) {
-      return false;
-    }
-    if (
-      selectedAmenities.length > 0 &&
-      !selectedAmenities.every((amenity) => property.amenities.includes(amenity))
-    ) {
-      return false;
-    }
-    return true;
-  });
+  const filteredProperties = properties;
 
   // Handler functions
   const handleTypeToggle = (type: string) => {
@@ -330,8 +378,28 @@ function PropertiesContent() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
+    <>
+      <div className="min-h-screen bg-background">
+        <Header />
+
+      {/* Become Owner Banner */}
+      <div className="bg-linear-to-r from-blue-50 to-indigo-50 border-b">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-1">
+                Want to List Your Property?
+              </h2>
+              <p className="text-gray-600">
+                Join our platform as a property owner and start listing your properties today.
+              </p>
+            </div>
+            <Button onClick={() => setShowOwnerDialog(true)} className="bg-primary hover:bg-primary/90">
+              Become an Owner
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <div className="container mx-auto px-4 max-w-7xl py-8">
         <div className="flex items-center justify-between mb-6">
@@ -418,9 +486,9 @@ function PropertiesContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {filteredProperties.map((property) => (
                   <PropertyCard
-                    key={property.id}
+                    key={property._id}
                     property={property}
-                    isBookmarked={bookmarkedProperties.has(property.id)}
+                    isBookmarked={bookmarkedProperties.has(property._id)}
                     onBookmarkClick={handleBookmark}
                   />
                 ))}
@@ -432,6 +500,141 @@ function PropertiesContent() {
 
       <Footer />
     </div>
+
+    {/* Owner Application Dialog */}
+    <Dialog open={showOwnerDialog} onOpenChange={setShowOwnerDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Become a Property Owner</DialogTitle>
+          <DialogDescription>
+            Fill out this form to apply for property owner status. An admin will review your application.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...ownerForm}>
+          <form
+            onSubmit={ownerForm.handleSubmit(handleOwnerApplication)}
+            className="space-y-4"
+          >
+            {/* Full Name Field */}
+            <FormField
+              control={ownerForm.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="John Doe"
+                      disabled={isOwnerLoading}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Phone Number Field */}
+            <FormField
+              control={ownerForm.control}
+              name="phoneNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="tel"
+                      placeholder="9876543210"
+                      disabled={isOwnerLoading}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Experience Field */}
+            <FormField
+              control={ownerForm.control}
+              name="experience"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Real Estate Experience</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g., 5 years in property management"
+                      disabled={isOwnerLoading}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Properties Count Field */}
+            <FormField
+              control={ownerForm.control}
+              name="propertiesCount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Number of Properties</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      disabled={isOwnerLoading}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Reason Field */}
+            <FormField
+              control={ownerForm.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Why do you want to become an owner?</FormLabel>
+                  <FormControl>
+                    <textarea
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      rows={3}
+                      placeholder="Tell us about your interest in property listing..."
+                      disabled={isOwnerLoading}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isOwnerLoading}
+            >
+              {isOwnerLoading ? (
+                <>
+                  <Spinner className="mr-2" />
+                  Submitting...
+                </>
+              ) : (
+                'Submit Application'
+              )}
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

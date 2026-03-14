@@ -45,7 +45,7 @@ export interface PropertyImage {
 }
 
 export interface Property {
-  id: string;
+  _id: string;
   title: string;
   description: string;
   type: PropertyType;
@@ -163,6 +163,10 @@ export interface AuthContextType {
   refreshToken: () => Promise<void>;
   startOTPFlow?: (email: string) => Promise<OTPAuthSession>;
   verifyOTP?: (otp: string) => Promise<User>;
+  submitOwnerApplication?: (applicationData: any) => Promise<any>;
+  getOwnerApplications?: () => Promise<any[]>;
+  approveOwnerApplication?: (applicationId: string) => Promise<any>;
+  rejectOwnerApplication?: (applicationId: string) => Promise<any>;
 }
 
 // Bookmark Types

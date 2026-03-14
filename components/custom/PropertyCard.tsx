@@ -26,9 +26,11 @@ export function PropertyCard({
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(property.price);
+  console.log(property);
+  
 
   return (
-    <Link href={`/property/${property.id}`}>
+    <Link href={`/property/${property._id}`}>
       <Card className="group overflow-hidden hover:shadow-lg transition-shadow duration-300 h-full cursor-pointer">
         {/* Image Container */}
         <div className="relative w-full h-48 overflow-hidden bg-muted">
@@ -39,6 +41,7 @@ export function PropertyCard({
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-300"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              loading="lazy"
             />
           )}
 

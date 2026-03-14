@@ -51,6 +51,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
     const { id } = await params;
     const body = await request.json();
 
@@ -82,7 +83,7 @@ export async function PUT(
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error updating property:', error);
+    console.log('Error updating property:', error);
     return NextResponse.json(
       {
         success: false,

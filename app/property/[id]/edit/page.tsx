@@ -153,7 +153,7 @@ export default function EditPropertyPage() {
         error.message || 
         PROPERTY_MESSAGES.PROPERTY_CREATED_ERROR;
       toast.error(errorMessage);
-      console.error('Property update error:', error);
+      console.error('Property update error:', error.response);
     } finally {
       setIsSubmitting(false);
     }
