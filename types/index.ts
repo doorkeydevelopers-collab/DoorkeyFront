@@ -45,7 +45,7 @@ export interface PropertyImage {
 }
 
 export interface Property {
-  _id: string;
+  id: string;
   title: string;
   description: string;
   type: PropertyType;
@@ -156,7 +156,7 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
   otpSession?: OTPAuthSession | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void | OTPAuthSession>;
   signup: (data: SignupRequest) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;

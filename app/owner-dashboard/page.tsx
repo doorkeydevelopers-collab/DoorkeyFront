@@ -7,6 +7,7 @@ import { Header } from '@/components/custom/Header';
 import { ProtectedRoute } from '@/components/custom/ProtectedRoute';
 import { PropertyCard } from '@/components/custom/PropertyCard';
 import { ConfirmDialog } from '@/components/custom/ConfirmDialog';
+import { AnalyticsCharts } from '@/components/custom/AnalyticsCharts';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,11 +29,12 @@ import {
   Edit,
   Trash2,
   AlertCircle,
+  BarChart3,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PROPERTY_MESSAGES, CONFIRMATION_MESSAGES } from '@/constants/messages';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 interface OwnerStats {
   totalProperties: number;
@@ -43,8 +45,17 @@ interface OwnerStats {
   properties: any[];
 }
 
+interface AnalyticsData {
+  viewsByDay: { date: string; count: number }[];
+  bookmarksByDay: { date: string; count: number }[];
+  totalViews30d: number;
+  totalBookmarks30d: number;
+  propertyBreakdown: { propertyId: string; title: string; views: number; bookmarks: number }[];
+}
+
 export default function OwnerDashboardPage() {
   const [stats, setStats] = useState<OwnerStats | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -52,8 +63,9 @@ export default function OwnerDashboardPage() {
     propertyId?: string;
   }>({ isOpen: false });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  // Fetch owner stats and properties
+  // Fetch owner stats and analytics
   useEffect(() => {
     const fetchStats = async () => {
       setIsLoading(true);
@@ -64,14 +76,23 @@ export default function OwnerDashboardPage() {
           throw new Error('Authentication required');
         }
 
-        const response = await axios.get(`${API_BASE_URL}/properties/dashboard/owner`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          withCredentials: true,
-        });
+        const headers = { Authorization: `Bearer ${token}` };
 
-        setStats(response.data);
+        const [statsRes, analyticsRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/properties/dashboard/owner`, {
+            headers,
+            withCredentials: true,
+          }),
+          axios.get(`${API_BASE_URL}/properties/dashboard/analytics`, {
+            headers,
+            withCredentials: true,
+          }).catch(() => ({ data: null })),
+        ]);
+
+        setStats(statsRes.data);
+        if (analyticsRes.data) {
+          setAnalytics(analyticsRes.data);
+        }
       } catch (err: any) {
         const errorMessage = err.response?.data?.error || err.message || 'Failed to load dashboard';
         setError(errorMessage);
@@ -213,128 +234,156 @@ export default function OwnerDashboardPage() {
             </Link>
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {dashboardStats.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <Card key={stat.label}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {stat.label}
-                        </p>
-                        <p className="text-3xl font-bold text-primary">
-                          {stat.value}
-                        </p>
-                      </div>
-                      <Icon className="h-8 w-8 text-primary/30" />
-                    </div>
+          {/* Main Tabs: Overview / Analytics */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
+            <TabsList className="mb-6">
+              <TabsTrigger value="overview" className="gap-2">
+                <Building2 size={16} />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="gap-2">
+                <BarChart3 size={16} />
+                Analytics
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="analytics">
+              {analytics ? (
+                <AnalyticsCharts data={analytics} />
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    No analytics data available yet
                   </CardContent>
                 </Card>
-              );
-            })}
-          </div>
+              )}
+            </TabsContent>
 
-          {/* Properties Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Properties</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="all" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="all">
-                    All ({stats.properties.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="available">
-                    Available ({availableProperties.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="rented">
-                    Rented ({rentedProperties.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="pending">
-                    Pending ({pendingProperties.length})
-                  </TabsTrigger>
-                </TabsList>
+            <TabsContent value="overview">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                {dashboardStats.map((stat) => {
+                  const Icon = stat.icon;
+                  return (
+                    <Card key={stat.label}>
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {stat.label}
+                            </p>
+                            <p className="text-3xl font-bold text-primary">
+                              {stat.value}
+                            </p>
+                          </div>
+                          <Icon className="h-8 w-8 text-primary/30" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
 
-                {/* All Properties */}
-                <TabsContent value="all" className="space-y-6 mt-6">
-                  {stats.properties.length === 0 ? (
-                    <div className="text-center py-12">
-                      <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-lg font-semibold mb-2">
-                        No properties listed
-                      </p>
-                      <p className="text-muted-foreground mb-4">
-                        Start by listing your first property
-                      </p>
-                      <Link href="/property/create">
-                        <Button className="bg-primary hover:bg-primary/90">
-                          <Plus size={18} className="mr-2" />
-                          List Property
-                        </Button>
-                      </Link>
-                    </div>
-                  ) : (
-                    <PropertyTableView
-                      properties={stats.properties}
-                      onDelete={handleDeleteConfirm}
-                    />
-                  )}
-                </TabsContent>
+              {/* Properties Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Properties</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Tabs defaultValue="all" className="w-full">
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="all">
+                        All ({stats.properties.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="available">
+                        Available ({availableProperties.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="rented">
+                        Rented ({rentedProperties.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="pending">
+                        Pending ({pendingProperties.length})
+                      </TabsTrigger>
+                    </TabsList>
 
-                {/* Available Properties */}
-                <TabsContent value="available" className="space-y-6 mt-6">
-                  {availableProperties.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">
-                        No available properties
-                      </p>
-                    </div>
-                  ) : (
-                    <PropertyTableView
-                      properties={availableProperties}
-                      onDelete={handleDeleteConfirm}
-                    />
-                  )}
-                </TabsContent>
+                    {/* All Properties */}
+                    <TabsContent value="all" className="space-y-6 mt-6">
+                      {stats.properties.length === 0 ? (
+                        <div className="text-center py-12">
+                          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                          <p className="text-lg font-semibold mb-2">
+                            No properties listed
+                          </p>
+                          <p className="text-muted-foreground mb-4">
+                            Start by listing your first property
+                          </p>
+                          <Link href="/property/create">
+                            <Button className="bg-primary hover:bg-primary/90">
+                              <Plus size={18} className="mr-2" />
+                              List Property
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <PropertyTableView
+                          properties={stats.properties}
+                          onDelete={handleDeleteConfirm}
+                        />
+                      )}
+                    </TabsContent>
 
-                {/* Rented Properties */}
-                <TabsContent value="rented" className="space-y-6 mt-6">
-                  {rentedProperties.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">
-                        No rented properties
-                      </p>
-                    </div>
-                  ) : (
-                    <PropertyTableView
-                      properties={rentedProperties}
-                      onDelete={handleDeleteConfirm}
-                    />
-                  )}
-                </TabsContent>
+                    {/* Available Properties */}
+                    <TabsContent value="available" className="space-y-6 mt-6">
+                      {availableProperties.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">
+                            No available properties
+                          </p>
+                        </div>
+                      ) : (
+                        <PropertyTableView
+                          properties={availableProperties}
+                          onDelete={handleDeleteConfirm}
+                        />
+                      )}
+                    </TabsContent>
 
-                {/* Pending Properties */}
-                <TabsContent value="pending" className="space-y-6 mt-6">
-                  {pendingProperties.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">
-                        No pending properties
-                      </p>
-                    </div>
-                  ) : (
-                    <PropertyTableView
-                      properties={pendingProperties}
-                      onDelete={handleDeleteConfirm}
-                    />
-                  )}
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+                    {/* Rented Properties */}
+                    <TabsContent value="rented" className="space-y-6 mt-6">
+                      {rentedProperties.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">
+                            No rented properties
+                          </p>
+                        </div>
+                      ) : (
+                        <PropertyTableView
+                          properties={rentedProperties}
+                          onDelete={handleDeleteConfirm}
+                        />
+                      )}
+                    </TabsContent>
+
+                    {/* Pending Properties */}
+                    <TabsContent value="pending" className="space-y-6 mt-6">
+                      {pendingProperties.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground">
+                            No pending properties
+                          </p>
+                        </div>
+                      ) : (
+                        <PropertyTableView
+                          properties={pendingProperties}
+                          onDelete={handleDeleteConfirm}
+                        />
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
 
           {/* Delete Confirmation Dialog */}
           <ConfirmDialog

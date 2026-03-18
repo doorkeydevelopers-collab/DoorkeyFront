@@ -16,8 +16,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
-import { Filter, X } from 'lucide-react';
+import { PropertyMap } from '@/components/custom/PropertyMap';
+import { Filter, X, LayoutGrid, Map as MapIcon, Bell, BellRing } from 'lucide-react';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { Property } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -43,7 +45,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
 
 function PropertiesContent() {
   const searchParams = useSearchParams();
-  const { submitOwnerApplication } = useAuth();
+  const { user, submitOwnerApplication } = useAuth();
   const [selectedCity, setSelectedCity] = useState(
     searchParams.get('city') || ''
   );
@@ -64,6 +66,11 @@ function PropertiesContent() {
   const [error, setError] = useState<string | null>(null);
   const [showOwnerDialog, setShowOwnerDialog] = useState(false);
   const [isOwnerLoading, setIsOwnerLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState('');
+  const [saveSearchFrequency, setSaveSearchFrequency] = useState<'daily' | 'weekly'>('daily');
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
 
   const ownerForm = useForm({
     defaultValues: {
@@ -75,14 +82,10 @@ function PropertiesContent() {
     },
   });
 
-  // Debounced filter values to prevent excessive API calls
+  // Debounce only continuous inputs (text, sliders) — discrete selectors don't need it
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const debouncedPriceRange = useDebounce(priceRange, 300);
   const debouncedAreaRange = useDebounce(areaRange, 300);
-  const debouncedSelectedTypes = useDebounce(selectedTypes, 300);
-  const debouncedSelectedCity = useDebounce(selectedCity, 300);
-  const debouncedSelectedLocality = useDebounce(selectedLocality, 300);
-  const debouncedSelectedAmenities = useDebounce(selectedAmenities, 300);
 
   // Handler for owner application
   const handleOwnerApplication = async (data: any) => {
@@ -121,18 +124,18 @@ function PropertiesContent() {
       try {
         const params = new URLSearchParams();
         
-        if (debouncedSelectedCity) params.append('city', debouncedSelectedCity);
-        if (debouncedSelectedTypes.length > 0) {
-          debouncedSelectedTypes.forEach(type => params.append('type', type));
+        if (selectedCity) params.append('city', selectedCity);
+        if (selectedTypes.length > 0) {
+          selectedTypes.forEach((type: string) => params.append('type', type));
         }
         if (debouncedPriceRange[0] > 0) params.append('minPrice', debouncedPriceRange[0].toString());
         if (debouncedPriceRange[1] < 100000000) params.append('maxPrice', debouncedPriceRange[1].toString());
         if (debouncedAreaRange[0] > 0) params.append('minArea', debouncedAreaRange[0].toString());
         if (debouncedAreaRange[1] < 1000000) params.append('maxArea', debouncedAreaRange[1].toString());
         if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
-        if (debouncedSelectedLocality) params.append('locality', debouncedSelectedLocality);
-        if (debouncedSelectedAmenities.length > 0) {
-          params.append('amenities', debouncedSelectedAmenities.join(','));
+        if (selectedLocality) params.append('locality', selectedLocality);
+        if (selectedAmenities.length > 0) {
+          params.append('amenities', selectedAmenities.join(','));
         }
 
         const response = await axios.get(`${API_BASE_URL}/properties?${params.toString()}`, {
@@ -142,7 +145,7 @@ function PropertiesContent() {
         // Transform backend response to frontend Property type
         const transformedProperties: Property[] = (response.data.properties || []).map(
           (prop: any, idx: number) => ({
-            _id: prop._id,
+            id: prop._id,
             title: prop.title || prop.name,
             description: prop.description || '',
             type: prop.type,
@@ -166,6 +169,7 @@ function PropertiesContent() {
               isPrimary: imgIdx === 0,
             })),
             isFeatured: prop.isFeatured || false,
+            coordinates: prop.coordinates || null,
             createdAt: prop.createdAt,
             updatedAt: prop.updatedAt,
           })
@@ -183,7 +187,7 @@ function PropertiesContent() {
     };
 
     fetchProperties();
-  }, [debouncedSelectedCity, debouncedSelectedTypes, debouncedPriceRange, debouncedAreaRange, debouncedSearchQuery, debouncedSelectedLocality, debouncedSelectedAmenities]);
+  }, [selectedCity, selectedTypes, debouncedPriceRange, debouncedAreaRange, debouncedSearchQuery, selectedLocality, selectedAmenities]);
 
   // Client-side filtering for amenities (can be optimized with backend support)
   const filteredProperties = properties;
@@ -239,6 +243,46 @@ function PropertiesContent() {
     priceRange[0] > 0 || priceRange[1] < 100000000,
     areaRange[0] > 0 || areaRange[1] < 1000000,
   ].filter(Boolean).length;
+
+  const handleSaveSearch = async () => {
+    if (!user) {
+      toast.error('Please login to save a search');
+      return;
+    }
+    setIsSavingSearch(true);
+    try {
+      const token = localStorage.getItem('doorkey_auth_token');
+      await axios.post(
+        `${API_BASE_URL}/saved-searches`,
+        {
+          name: saveSearchName || 'My Search',
+          email: user.email,
+          frequency: saveSearchFrequency,
+          filters: {
+            city: selectedCity,
+            locality: selectedLocality,
+            type: selectedTypes,
+            minPrice: priceRange[0],
+            maxPrice: priceRange[1],
+            minArea: areaRange[0],
+            maxArea: areaRange[1],
+            amenities: selectedAmenities,
+          },
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true,
+        }
+      );
+      toast.success('Search saved! You\'ll receive email alerts for matching properties.');
+      setShowSaveSearch(false);
+      setSaveSearchName('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to save search');
+    } finally {
+      setIsSavingSearch(false);
+    }
+  };
 
   const FilterPanel = () => (
     <div className="space-y-6">
@@ -383,6 +427,7 @@ function PropertiesContent() {
         <Header />
 
       {/* Become Owner Banner */}
+      {user?.role !== 'owner' && user?.role !== 'admin' && (
       <div className="bg-linear-to-r from-blue-50 to-indigo-50 border-b">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -400,6 +445,7 @@ function PropertiesContent() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="container mx-auto px-4 max-w-7xl py-8">
         <div className="flex items-center justify-between mb-6">
@@ -418,20 +464,57 @@ function PropertiesContent() {
               )}
             </p>
           </div>
-
-          {/* Mobile Filter Toggle */}
-          <Sheet open={showFilters} onOpenChange={setShowFilters}>
-            <SheetTrigger asChild className="md:hidden">
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {/* Save Search Button */}
+            {user && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSaveSearch(true)}
+                className="hidden sm:flex items-center gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+              >
+                <BellRing size={16} />
+                Save Search
               </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-80">
-              <div className="mt-8 space-y-6">
-                <FilterPanel />
-              </div>
-            </SheetContent>
-          </Sheet>
+            )}
+
+            {/* View Toggle + Filters */}
+            <div className="flex items-center border rounded-lg overflow-hidden ml-2">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="rounded-none gap-1"
+              >
+                <LayoutGrid size={16} />
+                Grid
+              </Button>
+              <Button
+                variant={viewMode === 'map' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('map')}
+                className="rounded-none gap-1"
+              >
+                <MapIcon size={16} />
+                Map
+              </Button>
+            </div>
+
+            {/* Mobile Filter Toggle */}
+            <Sheet open={showFilters} onOpenChange={setShowFilters}>
+              <SheetTrigger asChild className="md:hidden">
+                <Button variant="outline" size="icon">
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80">
+                <div className="mt-8 space-y-6">
+                  {FilterPanel()}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -452,7 +535,7 @@ function PropertiesContent() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <FilterPanel />
+              {FilterPanel()}
             </CardContent>
           </Card>
 
@@ -486,19 +569,114 @@ function PropertiesContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {filteredProperties.map((property) => (
                   <PropertyCard
-                    key={property._id}
+                    key={property.id}
                     property={property}
-                    isBookmarked={bookmarkedProperties.has(property._id)}
+                    isBookmarked={bookmarkedProperties.has(property.id)}
                     onBookmarkClick={handleBookmark}
                   />
                 ))}
               </div>
+            )}
+
+            {/* Map View */}
+            {viewMode === 'map' && !isLoading && !error && (
+              <PropertyMap
+                properties={filteredProperties.map(p => ({
+                  id: p.id,
+                  title: p.title,
+                  price: p.price,
+                  type: p.type,
+                  city: p.city,
+                  locality: p.locality,
+                  bedrooms: p.bedrooms,
+                  bathrooms: p.bathrooms,
+                  area: p.area,
+                  images: p.images.map(img => img.url),
+                  coordinates: (p as any).coordinates || undefined,
+                }))}
+              />
             )}
           </div>
         </div>
       </div>
 
       <Footer />
+
+      {/* Save Search Dialog */}
+      <Dialog open={showSaveSearch} onOpenChange={setShowSaveSearch}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Save Search</DialogTitle>
+            <DialogDescription>
+              We'll send you an email when new properties match your filters.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="search-name">Give this search a name</Label>
+              <Input
+                id="search-name"
+                placeholder="e.g. 2BHK in Indiranagar"
+                value={saveSearchName}
+                onChange={(e) => setSaveSearchName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="frequency">Email Frequency</Label>
+              <select
+                id="frequency"
+                className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                value={saveSearchFrequency}
+                onChange={(e) => setSaveSearchFrequency(e.target.value as 'daily' | 'weekly')}
+              >
+                <option value="daily">Daily digest</option>
+                <option value="weekly">Weekly digest</option>
+              </select>
+            </div>
+            <div className="bg-muted/50 p-3 rounded-md mt-2">
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Filter className="h-4 w-4" /> Active Filters
+              </h4>
+              <ul className="text-xs space-y-1 text-muted-foreground list-disc list-inside">
+                {selectedCity && <li>City: {selectedCity}</li>}
+                {selectedLocality && <li>Locality: {selectedLocality}</li>}
+                {selectedTypes.length > 0 && <li>Types: {selectedTypes.join(', ')}</li>}
+                {(priceRange[0] > 0 || priceRange[1] < 100000000) && (
+                  <li>Price: {priceRange[0]} - {priceRange[1]}</li>
+                )}
+                {selectedAmenities.length > 0 && <li>Amenities: {selectedAmenities.length} selected</li>}
+                {activeFiltersCount === 0 && <li>All properties (no active filters)</li>}
+              </ul>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowSaveSearch(false)}
+              disabled={isSavingSearch}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveSearch}
+              disabled={isSavingSearch || !saveSearchName.trim()}
+              className="gap-2"
+            >
+              {isSavingSearch ? (
+                <>
+                  <Spinner size="sm" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Bell size={16} />
+                  Save Search
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
 
     {/* Owner Application Dialog */}

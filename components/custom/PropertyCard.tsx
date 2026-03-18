@@ -30,7 +30,7 @@ export function PropertyCard({
   
 
   return (
-    <Link href={`/property/${property._id}`}>
+    <Link href={`/property/${property.id}`}>
       <Card className="group overflow-hidden hover:shadow-lg transition-shadow duration-300 h-full cursor-pointer">
         {/* Image Container */}
         <div className="relative w-full h-48 overflow-hidden bg-muted">

@@ -9,10 +9,31 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'DoorKey - Premium Property Listing Platform',
-  description: 'Find your perfect property - Residential, Commercial, Industrial & Agricultural properties. Connect owners and tenants on India\'s fastest property listing platform.',
+  title: {
+    default: 'DoorKey — Premium Property Listing Platform',
+    template: '%s | DoorKey',
+  },
+  description: "Find your perfect property — Residential, Commercial, Industrial & Agricultural properties. Connect owners and tenants on India's fastest property listing platform.",
   generator: 'v0.app',
-  keywords: ['property listing', 'real estate', 'rent', 'buy', 'sell', 'landlord', 'tenant'],
+  keywords: ['property listing', 'real estate', 'rent', 'buy', 'sell', 'landlord', 'tenant', 'apartment', 'house', 'india'],
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://doorkey.in'),
+  openGraph: {
+    type: 'website',
+    locale: 'en_IN',
+    siteName: 'DoorKey',
+    title: 'DoorKey — Premium Property Listing Platform',
+    description: "Find your perfect property on India's fastest property listing platform.",
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DoorKey — Premium Property Listing Platform',
+    description: "Find your perfect property on India's fastest property listing platform.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true },
+  },
   icons: {
     icon: [
       {
@@ -46,8 +67,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className="font-sans antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <AuthProvider>
           {children}
           <Toaster position="top-right" expand richColors />

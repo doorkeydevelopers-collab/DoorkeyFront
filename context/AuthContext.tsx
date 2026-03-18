@@ -15,7 +15,7 @@ import { AUTH_MESSAGES } from '@/constants/messages';
 import { toast } from 'sonner';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 export interface OTPAuthSession {
   email: string;
@@ -47,15 +47,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const startOTPFlow = useCallback(async (email: string) => {
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/start`, { email });
+      // Note: axios interceptor already unwraps response.data
+      const responseData = await axios.post(`${API_BASE_URL}/auth/start`, { email }) as any;
       
-      if (!response.data.Session) {
+      const sessionId = responseData.Session || responseData.data?.Session;
+      
+      if (!sessionId) {
         throw new Error('Failed to initiate OTP flow');
       }
 
       const session: OTPAuthSession = {
         email,
-        session: response.data.Session,
+        session: sessionId,
         expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
       };
 
@@ -63,7 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       toast.success(`OTP sent to ${email}`);
       return session;
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to send OTP';
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to send OTP';
       toast.error(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -78,13 +81,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/verify`, {
+      // Note: axios interceptor already unwraps response.data,
+      // so `response` here IS the data payload directly
+      const data = await axios.post(`${API_BASE_URL}/auth/verify`, {
         email: otpSession.email,
         otp,
         session: otpSession.session,
       });
 
-      const { accessToken, idToken } = response.data;
+      // data is already the response body due to interceptor
+      const responseData = (data as any);
+      const accessToken = responseData.accessToken || responseData.data?.accessToken;
+      const idToken = responseData.idToken || responseData.data?.idToken;
 
       if (!accessToken) {
         throw new Error('No access token received');
@@ -96,8 +104,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Fetch user profile from backend (uses interceptor to attach token)
       const axiosInstance = getAxiosInstance();
-      const userResponse = await axiosInstance.get('/auth/profile');
-      const userData = userResponse.user;
+      const userResponse = await axiosInstance.get('/auth/profile') as any;
+      const userData = userResponse.user || userResponse.data?.user || userResponse;
 
       // Clean up OTP session
       setOtpSession(null);
@@ -108,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       toast.success(AUTH_MESSAGES.LOGIN_SUCCESS);
       return userData;
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'OTP verification failed';
+      const errorMessage = error.response?.data?.error || error.message || 'OTP verification failed';
       toast.error(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -211,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const axiosInstance = getAxiosInstance();
         const response = await axiosInstance.get('/auth/owner-applications');
-        return response.applications;
+        return response.data.applications;
       } catch (error: any) {
         toast.error('Failed to fetch applications');
         throw error;
@@ -255,12 +263,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const axiosInstance = getAxiosInstance();
       const response = await axiosInstance.post('/auth/refresh');
       
-      if (!response.accessToken) {
+      if (!response.data?.accessToken) {
         throw new Error('Failed to refresh token');
       }
 
-      setAuthToken(response.accessToken);
-      setTokenState(response.accessToken);
+      setAuthToken(response.data.accessToken);
+      setTokenState(response.data.accessToken);
     } catch (error) {
       logout();
       throw error;

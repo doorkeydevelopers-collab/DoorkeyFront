@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { KEY_ICON } from '@/app/login/icons';
-import { Menu, LogOut, LayoutDashboard, Plus, Search } from 'lucide-react';
+import { Menu, LogOut, LayoutDashboard, Plus, Search, MessageCircle } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -24,7 +24,12 @@ import {
 
 export function Header() {
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, isLoading } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -41,15 +46,21 @@ export function Header() {
     .join('')
     .toUpperCase() || 'U';
 
-  const navLinks = [
-    { label: 'Search', href: '/properties', icon: Search },
-    ...(isAuthenticated && user?.role === 'owner'
-      ? [{ label: 'List Property', href: '/property/create', icon: Plus }]
-      : []),
-    ...(isAuthenticated && (user?.role === 'owner' || user?.role === 'admin')
-      ? [{ label: 'Dashboard', href: `/${user.role}-dashboard`, icon: LayoutDashboard }]
-      : []),
-  ];
+  // Only compute auth-dependent nav links after mounting to avoid hydration mismatch
+  const navLinks = mounted
+    ? [
+        { label: 'Search', href: '/properties', icon: Search },
+        ...(isAuthenticated && user?.role === 'owner'
+          ? [{ label: 'List Property', href: '/property/create', icon: Plus }]
+          : []),
+        ...(isAuthenticated && (user?.role === 'owner' || user?.role === 'admin')
+          ? [{ label: 'Dashboard', href: `/${user.role}-dashboard`, icon: LayoutDashboard }]
+          : []),
+        ...(isAuthenticated
+          ? [{ label: 'Messages', href: '/messages', icon: MessageCircle }]
+          : []),
+      ]
+    : [{ label: 'Search', href: '/properties', icon: Search }];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -83,7 +94,9 @@ export function Header() {
 
           {/* Right Section */}
           <div className="flex items-center gap-2">
-            {isAuthenticated && user ? (
+            {!mounted || isLoading ? (
+              <div className="h-8 w-8" /> /* placeholder to avoid layout shift */
+            ) : isAuthenticated && user ? (
               <>
                 {/* Desktop User Menu */}
                 <div className="hidden md:block">

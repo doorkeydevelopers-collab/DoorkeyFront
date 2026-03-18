@@ -110,19 +110,21 @@ export async function POST(request: NextRequest) {
       type,
       city,
       locality,
+      address: `${locality}, ${city}`,
       price: parseFloat(price),
       area: parseFloat(area),
       description: description || '',
       amenities: [],
-      images: [
-        'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
-      ],
+      images: [{
+        id: '1',
+        url: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
+        alt: 'Property Image',
+        isPrimary: true
+      }],
       isFeatured: false,
-      status: 'Available',
+      status: 'available',
       ownerId: 'owner_1',
       ownerName: 'Owner Name',
-      ownerEmail: 'owner@example.com',
-      ownerPhone: '9876543210',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

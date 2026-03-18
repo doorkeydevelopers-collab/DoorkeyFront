@@ -36,22 +36,43 @@ const createAxiosInstance = (): AxiosInstance => {
     }
   );
 
+  // Track if we're already handling a 401 to prevent duplicate redirects
+  let isRedirectingTo401 = false;
+
   // Response Interceptor
   instance.interceptors.response.use(
     (response: AxiosResponse) => {
       return response.data;
     },
     (error: AxiosError) => {
-      if (error.response?.status === 401) {
-        // Unauthorized - clear token and redirect to login
+      if (error.response?.status === 401 && !isRedirectingTo401) {
+        isRedirectingTo401 = true;
+
+        // Clear all auth data
         clearAuthToken();
+        clearUser();
+
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          // Only redirect if not already on login page
+          if (!window.location.pathname.startsWith('/login')) {
+            // Use dynamic import to avoid bundling toast in the interceptor module scope
+            import('sonner').then(({ toast }) => {
+              toast.error('Session expired. Please sign in again.');
+            });
+
+            // Small delay so the toast is visible before redirect
+            setTimeout(() => {
+              window.location.href = '/login';
+              isRedirectingTo401 = false;
+            }, 300);
+          } else {
+            isRedirectingTo401 = false;
+          }
         }
       }
 
       const message =
-        error.response?.data?.message ||
+        (error.response?.data as any)?.message ||
         error.message ||
         API_MESSAGES.SERVER_ERROR;
 

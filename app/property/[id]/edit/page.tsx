@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { PropertyFormSchema, PropertyFormData } from '@/schemas';
 import { ProtectedRoute } from '@/components/custom/ProtectedRoute';
 import { Header } from '@/components/custom/Header';
+import { ImageUpload } from '@/components/custom/ImageUpload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,10 +31,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import { PROPERTY_CONFIG } from '@/constants/config';
-import { CITIES, LOCALITIES } from '@/services/mockData';
 import { toast } from 'sonner';
 import { PROPERTY_MESSAGES } from '@/constants/messages';
 import axios from 'axios';
+import { AddressSearch } from '@/components/custom/AddressSearch';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -44,7 +45,6 @@ export default function EditPropertyPage() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedCity, setSelectedCity] = useState('');
 
   const form = useForm<PropertyFormData>({
     resolver: zodResolver(PropertyFormSchema),
@@ -67,6 +67,8 @@ export default function EditPropertyPage() {
     },
   });
 
+  const amenities = form.watch('amenities') || [];
+
   // Fetch property data
   useEffect(() => {
     const fetchProperty = async () => {
@@ -85,11 +87,6 @@ export default function EditPropertyPage() {
         });
 
         const property = response.data.data || response.data;
-        
-        // Set the selected city for locality dropdown
-        if (property.city) {
-          setSelectedCity(property.city);
-        }
 
         // Populate form with fetched data
         form.reset({
@@ -159,12 +156,16 @@ export default function EditPropertyPage() {
     }
   };
 
-  const handleAmenityToggle = (amenity: string) => {
-    const currentAmenities = form.getValues('amenities');
-    const updated = currentAmenities.includes(amenity)
-      ? currentAmenities.filter((a) => a !== amenity)
-      : [...currentAmenities, amenity];
-    form.setValue('amenities', updated);
+  const handleAmenityToggle = (amenity: string, checked: boolean) => {
+    const currentAmenities = form.getValues('amenities') || [];
+    const updated = checked
+      ? [...currentAmenities, amenity]
+      : currentAmenities.filter((a) => a !== amenity);
+    form.setValue('amenities', updated, {
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true,
+    });
   };
 
   if (isLoading) {
@@ -429,6 +430,17 @@ export default function EditPropertyPage() {
                   <CardTitle>Location</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* Address Search */}
+                  <AddressSearch
+                    onSelect={(data) => {
+                      form.setValue('locality', data.locality, { shouldValidate: true });
+                      form.setValue('city', data.city, { shouldValidate: true });
+                      form.setValue('state', data.state, { shouldValidate: true });
+                      form.setValue('zipCode', data.zipCode, { shouldValidate: true });
+                    }}
+                    disabled={isSubmitting}
+                  />
+
                   {/* Address */}
                   <FormField
                     control={form.control}
@@ -438,7 +450,7 @@ export default function EditPropertyPage() {
                         <FormLabel>Full Address</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Enter complete address"
+                            placeholder="Enter complete street address"
                             disabled={isSubmitting}
                             {...field}
                           />
@@ -455,29 +467,14 @@ export default function EditPropertyPage() {
                       name="city"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>City</FormLabel>
-                          <Select
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              setSelectedCity(value);
-                              form.setValue('locality', '');
-                            }}
-                            value={field.value}
-                            disabled={isSubmitting}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select city" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {CITIES.map((city) => (
-                                <SelectItem key={city} value={city}>
-                                  {city}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>City / District</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="City or District"
+                              disabled={isSubmitting}
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -489,26 +486,14 @@ export default function EditPropertyPage() {
                       name="locality"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Locality</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            disabled={isSubmitting || !selectedCity}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select locality" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {selectedCity &&
-                                LOCALITIES[selectedCity]?.map((locality) => (
-                                  <SelectItem key={locality} value={locality}>
-                                    {locality}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Locality / Area</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Locality or Area"
+                              disabled={isSubmitting}
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -522,7 +507,7 @@ export default function EditPropertyPage() {
                       name="state"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>State (Optional)</FormLabel>
+                          <FormLabel>State</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="State"
@@ -541,10 +526,10 @@ export default function EditPropertyPage() {
                       name="zipCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Zip Code (Optional)</FormLabel>
+                          <FormLabel>Pincode</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="Zip Code"
+                              placeholder="6-digit pincode"
                               disabled={isSubmitting}
                               {...field}
                             />
@@ -568,12 +553,8 @@ export default function EditPropertyPage() {
                       <div key={amenity} className="flex items-center space-x-2">
                         <Checkbox
                           id={amenity}
-                          checked={form
-                            .getValues('amenities')
-                            .includes(amenity)}
-                          onCheckedChange={() =>
-                            handleAmenityToggle(amenity)
-                          }
+                          checked={amenities.includes(amenity)}
+                          onCheckedChange={(checked) => handleAmenityToggle(amenity, !!checked)}
                           disabled={isSubmitting}
                         />
                         <Label
@@ -599,26 +580,15 @@ export default function EditPropertyPage() {
                     name="images"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Image URLs</FormLabel>
+                        <FormLabel>Property Images</FormLabel>
                         <FormControl>
-                          <Textarea
-                            placeholder="Enter image URLs (one per line)"
+                          <ImageUpload
+                            value={field.value}
+                            onChange={field.onChange}
                             disabled={isSubmitting}
-                            rows={4}
-                            value={field.value.join('\n')}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value
-                                  .split('\n')
-                                  .filter((url) => url.trim())
-                              )
-                            }
                           />
                         </FormControl>
                         <FormMessage />
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Add at least one image URL. You can get free image URLs from Unsplash or similar services.
-                        </p>
                       </FormItem>
                     )}
                   />

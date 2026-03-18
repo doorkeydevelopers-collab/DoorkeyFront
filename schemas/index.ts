@@ -71,7 +71,7 @@ export const UpdateProfileSchema = z.object({
     .optional(),
   profileImage: z
     .string()
-    .url(FORM_MESSAGES.INVALID_URL)
+    .url('Please enter a valid URL')
     .optional(),
 });
 
@@ -127,7 +127,7 @@ export const PropertyFormSchema = z.object({
     .array(z.string())
     .default([]),
   images: z
-    .array(z.string().url(FORM_MESSAGES.INVALID_URL))
+    .array(z.string().url('Please enter a valid URL'))
     .min(1, 'At least one image is required')
     .max(10, 'Maximum 10 images allowed'),
 });

@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { PROPERTY_MESSAGES } from '@/constants/messages';
 import { useAuth } from '@/hooks/useAuth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 interface AdminStats {
   totalProperties: number;
@@ -69,7 +69,7 @@ function OwnerApplicationsTab() {
 
   const fetchApplications = async () => {
     try {
-      const apps = await getOwnerApplications();
+      const apps = getOwnerApplications ? await getOwnerApplications() : [];
       setApplications(apps);
     } catch (error) {
       toast.error('Failed to fetch applications');
@@ -81,7 +81,7 @@ function OwnerApplicationsTab() {
   const handleApprove = async (applicationId: string) => {
     setProcessingId(applicationId);
     try {
-      await approveOwnerApplication(applicationId);
+      if (approveOwnerApplication) await approveOwnerApplication(applicationId);
       setApplications(apps => apps.filter(app => app.id !== applicationId));
     } catch (error) {
       // Error already handled in the hook
@@ -93,7 +93,7 @@ function OwnerApplicationsTab() {
   const handleReject = async (applicationId: string) => {
     setProcessingId(applicationId);
     try {
-      await rejectOwnerApplication(applicationId);
+      if (rejectOwnerApplication) await rejectOwnerApplication(applicationId);
       setApplications(apps => apps.filter(app => app.id !== applicationId));
     } catch (error) {
       // Error already handled in the hook

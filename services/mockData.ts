@@ -232,6 +232,14 @@ export const CITIES = [
   'Lucknow',
 ];
 
+export const PROPERTY_TYPES = [
+  'residential',
+  'commercial',
+  'industrial',
+  'agriculture',
+  'mixed'
+];
+
 export const LOCALITIES: Record<string, string[]> = {
   'Mumbai': ['Bandra', 'Downtown', 'Andheri', 'Borivali', 'Dadar'],
   'Delhi': ['Dwarka', 'Noida', 'Gurgaon', 'Indiranagar', 'Karol Bagh'],
