@@ -44,7 +44,7 @@ interface MessageItem {
 }
 
 function MessagesContent() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -58,7 +58,7 @@ function MessagesContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const userId = (user as any)?.sub || (user as any)?.id || '';
+  const userId = user?.id || (user as any)?._id || (user as any)?.cognitoSub || (user as any)?.sub || '';
 
   // Connect socket
   useEffect(() => {
@@ -106,7 +106,11 @@ function MessagesContent() {
 
   // Fetch conversations
   useEffect(() => {
-    if (!userId) return;
+    if (authLoading) return;
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
 
     const fetchConversations = async () => {
       try {
@@ -124,16 +128,18 @@ function MessagesContent() {
     };
 
     fetchConversations();
-  }, [userId]);
+  }, [userId, authLoading]);
 
   // Auto-select conversation from URL params
   useEffect(() => {
     const convId = searchParams.get('conversation');
     if (convId && conversations.length > 0) {
-      const conv = conversations.find((c) => c.id === convId);
-      if (conv) selectConversation(conv);
+      if (!selectedConv || (selectedConv.id !== convId && (selectedConv as any)._id !== convId)) {
+        const conv = conversations.find((c) => c.id === convId || (c as any)._id === convId);
+        if (conv) selectConversation(conv);
+      }
     }
-  }, [searchParams, conversations]);
+  }, [searchParams, conversations, selectedConv]);
 
   const selectConversation = async (conv: ConversationItem) => {
     setSelectedConv(conv);
@@ -148,7 +154,12 @@ function MessagesContent() {
 
     // Reset unread
     setConversations((prev) =>
-      prev.map((c) => (c.id === conv.id ? { ...c, unread: 0 } : c))
+      prev.map((c) => {
+        if (c.id === conv.id || (c as any)._id === conv.id) {
+          return c.unread > 0 ? { ...c, unread: 0 } : c;
+        }
+        return c;
+      })
     );
 
     // Fetch messages

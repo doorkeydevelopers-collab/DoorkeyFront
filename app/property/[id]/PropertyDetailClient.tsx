@@ -26,6 +26,8 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Property } from '@/types';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+
 interface Props {
   property: Property | null;
   error?: string | null;
@@ -38,6 +40,44 @@ export default function PropertyDetailClient({ property, error }: Props) {
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState(false);
+
+  const handleSendMessage = async () => {
+    if (!property) return;
+
+    try {
+      const token = localStorage.getItem('doorkey_auth_token');
+      if (!token) {
+        toast.error('Please log in to send a message');
+        router.push('/login');
+        return;
+      }
+
+      setIsStartingChat(true);
+      const res = await axios.post(
+        `${API_BASE_URL}/chat/conversations`,
+        {
+          recipientId: property.ownerId,
+          propertyId: property.id,
+          propertyTitle: property.title,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true,
+        }
+      );
+
+      const convId = res.data.conversation.id || res.data.conversation._id;
+      if (convId) {
+        router.push(`/messages?conversation=${convId}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to start conversation:', err);
+      toast.error(err.response?.data?.error || 'Failed to start conversation');
+    } finally {
+      setIsStartingChat(false);
+    }
+  };
 
   // Load bookmarks from localStorage on mount
   useEffect(() => {
@@ -396,9 +436,11 @@ export default function PropertyDetailClient({ property, error }: Props) {
                   <Button
                     variant="outline"
                     className="w-full gap-2 h-10"
+                    onClick={handleSendMessage}
+                    disabled={isStartingChat}
                   >
-                    <Mail size={18} />
-                    Send Message
+                    {isStartingChat ? <Spinner /> : <Mail size={18} />}
+                    {isStartingChat ? 'Starting Chat...' : 'Send Message'}
                   </Button>
                 </div>
 
